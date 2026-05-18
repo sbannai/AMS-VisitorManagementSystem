@@ -187,12 +187,63 @@ PATCH  /api/notifications/:id/read → mark one as read
 ### Backend `.env`
 ```env
 PORT=5000
+DB_ENGINE=mysql
+DB_PROFILE=default
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=educhoice
+DB_USER=root
+DB_PASSWORD=your_mysql_password
+DB_LOGGING=false
+DB_SYNC_ALTER=true
 MONGODB_URI=mongodb://localhost:27017/school_management
 JWT_SECRET=your_min_32_char_secret
 FRONTEND_URL=http://localhost:3000
 VISITOR_ALERT_MINUTES=10    # Minutes before MISSING alert fires
 UPLOAD_PATH=./uploads
 ```
+
+### Database Switching
+The backend selects the database engine at startup using `DB_ENGINE`.
+
+```env
+# Use Sequelize + MySQL
+DB_ENGINE=mysql
+
+# Or use Mongoose + MongoDB
+DB_ENGINE=mongodb
+MONGODB_URI=mongodb://localhost:27017/school_management
+```
+
+For MySQL, the backend can also select a database profile using `DB_PROFILE`.
+
+```env
+# Active database
+DB_PROFILE=educhoice
+
+# Fallback/default profile
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=school_management
+DB_USER=root
+DB_PASSWORD=
+
+# EduChoice profile
+DB_EDUCHOICE_HOST=localhost
+DB_EDUCHOICE_PORT=3306
+DB_EDUCHOICE_NAME=educhoice
+DB_EDUCHOICE_USER=root
+DB_EDUCHOICE_PASSWORD=your_mysql_password
+
+# Local AMS profile
+DB_AMS_HOST=localhost
+DB_AMS_PORT=3306
+DB_AMS_NAME=ams_visitor_management
+DB_AMS_USER=root
+DB_AMS_PASSWORD=your_mysql_password
+```
+
+Change `DB_ENGINE` to `mysql` or `mongodb`, then restart the backend. When using MySQL, change `DB_PROFILE` to `educhoice`, `ams`, or another configured profile. `GET /api/health` returns the active engine/profile/database without exposing credentials.
 
 ### Frontend `.env`
 ```env

@@ -4,16 +4,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { Eye, EyeOff, Loader2, GraduationCap, Users, Shield, School } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-const DEMOS = [
-  { label: 'Admin',         email: 'admin@school.com',      color: 'bg-violet-100 text-violet-700 border-violet-200' },
-  { label: 'Receptionist',  email: 'reception@school.com',  color: 'bg-amber-100 text-amber-700 border-amber-200' },
-  { label: 'Gatekeeper',    email: 'gate@school.com',       color: 'bg-cyan-100 text-cyan-700 border-cyan-200' },
-  { label: 'Teacher (Math)',email: 'ramesh@school.com',     color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
-  { label: 'Teacher (Sci)', email: 'sunita@school.com',     color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
-  { label: 'Parent (Ravi)', email: 'ravi@parent.com',       color: 'bg-brand-100 text-brand-700 border-brand-200' },
-  { label: 'Parent (Meena)',email: 'meena@parent.com',      color: 'bg-brand-100 text-brand-700 border-brand-200' },
-];
-
 export default function Login() {
   const [form,    setForm]    = useState({ email: '', password: '' });
   const [show,    setShow]    = useState(false);
@@ -91,20 +81,6 @@ export default function Login() {
 
           <h2 className="font-display font-bold text-2xl text-surface-900 mb-1">Sign in</h2>
           <p className="text-surface-500 text-sm mb-7">Access your dashboard to manage appointments and visitors.</p>
-
-          {/* Demo buttons */}
-          <div className="mb-6 p-4 bg-white rounded-2xl border border-surface-200 shadow-card">
-            <p className="text-xs font-semibold text-surface-400 uppercase tracking-wider mb-3">Quick demo login (pass: demo123)</p>
-            <div className="flex flex-wrap gap-2">
-              {DEMOS.map(d => (
-                <button key={d.email} type="button"
-                  onClick={() => setForm({ email: d.email, password: 'demo123' })}
-                  className={`text-xs font-semibold px-2.5 py-1 rounded-lg border transition-all hover:scale-105 ${d.color}`}>
-                  {d.label}
-                </button>
-              ))}
-            </div>
-          </div>
 
           <form onSubmit={submit} className="space-y-4">
             <div>

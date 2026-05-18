@@ -18,8 +18,13 @@ api.interceptors.response.use(
   err => {
     const msg = err.response?.data?.message || 'Network error';
     if (err.response?.status === 401) {
-      localStorage.clear();
-      window.location.href = '/login';
+      localStorage.removeItem('sch_token');
+      localStorage.removeItem('sch_user');
+      if (!err.config?.url?.includes('/auth/login')) {
+        window.location.href = '/login';
+      } else {
+        toast.error(msg);
+      }
     } else {
       toast.error(msg);
     }

@@ -1,16 +1,16 @@
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const User = require('../../models/User');
 
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    const user = await User.findOne({ where: { email: email?.toLowerCase(), isActive: true } });
+    const user = await User.findOne({ email: email?.toLowerCase(), isActive: true });
     if (!user || !await user.comparePassword(password)) {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
     const token = jwt.sign(
-      { id: user.id, role: user.role, name: user.name },
+      { id: user._id, role: user.role, name: user.name },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
     );
@@ -28,12 +28,8 @@ exports.getProfile = async (req, res) => {
 exports.getUsers = async (req, res) => {
   try {
     const { role } = req.query;
-    const where = role ? User.roleWhere(role) : { isActive: true };
-    const users = await User.findAll({
-      where,
-      attributes: { exclude: ['passwordHash'] },
-      order: [['name', 'ASC']],
-    });
+    const filter = role ? { role, isActive: true } : { isActive: true };
+    const users = await User.find(filter).select('-passwordHash').sort({ name: 1 });
     res.json({ success: true, users });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error' });

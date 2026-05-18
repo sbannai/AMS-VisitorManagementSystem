@@ -8,6 +8,7 @@ const path    = require('path');
 const rateLimit = require('express-rate-limit');
 
 const connect = require('./config/db');
+const { getDatabaseEngine } = require('./config/database');
 const routes  = require('./routes/index');
 const { initSocket } = require('./services/socket.service');
 const { startVisitorAlertCron } = require('./services/visitorAlert.service');
@@ -38,18 +39,23 @@ initSocket(server);
 
 const PORT = process.env.PORT || 5000;
 
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use. Stop the running backend or set PORT to another value in .env.`);
+    process.exit(1);
+  }
+
+  console.error('Server error:', err);
+  process.exit(1);
+});
+
 connect().then(() => {
   server.listen(PORT, () => {
     console.log(`\n🚀 School Management Server → http://localhost:${PORT}`);
     console.log(`📡 Socket.IO live on same port`);
-    console.log(`\n📋 Run: npm run seed  — to create demo accounts`);
-    console.log(`\nDemo credentials (after seed):`);
-    console.log(`  admin@school.com       / demo123  — Admin`);
-    console.log(`  reception@school.com   / demo123  — Receptionist`);
-    console.log(`  gate@school.com        / demo123  — Gatekeeper`);
-    console.log(`  ramesh@school.com      / demo123  — Teacher (Maths)`);
-    console.log(`  sunita@school.com      / demo123  — Teacher (Science)`);
-    console.log(`  ravi@parent.com        / demo123  — Parent\n`);
+    console.log(getDatabaseEngine() === 'mongodb'
+      ? '\nLogin uses MongoDB users collection.\n'
+      : `\n👤 Login uses existing EduChoice userprofiles records.\n`);
     startVisitorAlertCron();
   });
 });

@@ -8,11 +8,20 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const token = localStorage.getItem('sch_token');
     const stored = localStorage.getItem('sch_user');
-    if (stored) {
-      const u = JSON.parse(stored);
-      setUser(u);
-      connectSocket(u._id);
+    if (token && stored) {
+      try {
+        const u = JSON.parse(stored);
+        setUser(u);
+        connectSocket(u._id);
+      } catch (_) {
+        localStorage.removeItem('sch_token');
+        localStorage.removeItem('sch_user');
+      }
+    } else {
+      localStorage.removeItem('sch_token');
+      localStorage.removeItem('sch_user');
     }
     setLoading(false);
   }, []);

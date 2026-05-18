@@ -2,11 +2,13 @@ const express = require('express');
 const router  = express.Router();
 const { authenticate, requireRole } = require('../middleware/auth');
 const upload = require('../middleware/upload');
+const { getDatabaseEngine, describeDatabaseConfig } = require('../config/database');
 
-const authCtrl   = require('../controllers/auth.controller');
-const apptCtrl   = require('../controllers/appointment.controller');
-const visitCtrl  = require('../controllers/visitor.controller');
-const notifCtrl  = require('../controllers/notification.controller');
+const controllerRoot = getDatabaseEngine() === 'mongodb' ? '../controllers/mongo' : '../controllers';
+const authCtrl = require(`${controllerRoot}/auth.controller`);
+const apptCtrl = require(`${controllerRoot}/appointment.controller`);
+const visitCtrl = require(`${controllerRoot}/visitor.controller`);
+const notifCtrl = require(`${controllerRoot}/notification.controller`);
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 router.post('/auth/login',   authCtrl.login);
@@ -39,6 +41,10 @@ router.patch('/notifications/read',   authenticate, notifCtrl.markRead);
 router.patch('/notifications/:id/read', authenticate, notifCtrl.markOneRead);
 
 // ── Health ────────────────────────────────────────────────────────────────────
-router.get('/health', (req, res) => res.json({ status: 'ok', ts: new Date() }));
+router.get('/health', (req, res) => res.json({
+  status: 'ok',
+  ts: new Date(),
+  database: describeDatabaseConfig(),
+}));
 
 module.exports = router;

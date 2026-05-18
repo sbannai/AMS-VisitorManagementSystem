@@ -1,6 +1,5 @@
-const { Op, Sequelize, Visitor, User } = require('../models/sequelize');
-const { createNotification, notifyRole } = require('../services/notification.service');
-require('dotenv').config();
+const Visitor = require('../../models/Visitor');
+const { createNotification, notifyRole } = require('../../services/notification.service');
 
 exports.register = async (req, res) => {
   try {
@@ -15,7 +14,7 @@ exports.register = async (req, res) => {
 
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
-    const todayCount = await Visitor.count({ where: { checkInTime: { [Op.gte]: startOfDay } } });
+    const todayCount = await Visitor.countDocuments({ checkInTime: { $gte: startOfDay } });
     const badgeNumber = `VIS-${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit' }).replace('/', '')}-${String(todayCount + 1).padStart(3, '0')}`;
 
     const visitorData = {
@@ -36,7 +35,7 @@ exports.register = async (req, res) => {
       checkInTime,
       expectedCheckOut,
       badgeNumber,
-      registeredById: req.user.id,
+      registeredBy: req.user._id,
     };
 
     if (req.file) visitorData.photoUrl = `/uploads/photos/${req.file.filename}`;
@@ -48,7 +47,7 @@ exports.register = async (req, res) => {
       title: 'New Visitor Registered',
       message: `${name} has checked in to meet ${personToMeet}. Badge: ${badgeNumber}. Vehicle: ${vehicleNumber || 'None'}. Expected exit: ${expectedCheckOut.toLocaleTimeString()}.`,
       type: 'gatekeeper_alert',
-      relatedId: visitor.id,
+      relatedId: visitor._id,
       relatedModel: 'Visitor',
     });
 
@@ -58,7 +57,7 @@ exports.register = async (req, res) => {
         title: 'Visitor Arrived for You',
         message: `${name} from ${company || 'N/A'} has arrived to meet you. Purpose: ${purpose}. Badge: ${badgeNumber}.`,
         type: 'general',
-        relatedId: visitor.id,
+        relatedId: visitor._id,
         relatedModel: 'Visitor',
       });
     }
@@ -73,33 +72,33 @@ exports.register = async (req, res) => {
 exports.getAll = async (req, res) => {
   try {
     const { status, date, search, page = 1, limit = 20 } = req.query;
-    const where = {};
+    const filter = {};
 
-    if (status) where.status = status;
+    if (status) filter.status = status;
     if (date) {
       const start = new Date(date);
       start.setHours(0, 0, 0, 0);
       const end = new Date(date);
       end.setHours(23, 59, 59, 999);
-      where.checkInTime = { [Op.between]: [start, end] };
+      filter.checkInTime = { $gte: start, $lte: end };
     }
     if (search) {
-      where[Op.or] = [
-        { name: { [Op.like]: `%${search}%` } },
-        { phone: { [Op.like]: `%${search}%` } },
-        { vehicleNumber: { [Op.like]: `%${search}%` } },
-        { badgeNumber: { [Op.like]: `%${search}%` } },
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { phone: { $regex: search, $options: 'i' } },
+        { vehicleNumber: { $regex: search, $options: 'i' } },
+        { badgeNumber: { $regex: search, $options: 'i' } },
       ];
     }
 
-    const { rows: visitors, count: total } = await Visitor.findAndCountAll({
-      where,
-      include: [{ model: User, as: 'registeredBy', attributes: ['id', 'name'], required: false }],
-      order: [['checkInTime', 'DESC']],
-      offset: (Number(page) - 1) * Number(limit),
-      limit: Number(limit),
-      distinct: true,
-    });
+    const [visitors, total] = await Promise.all([
+      Visitor.find(filter)
+        .populate('registeredBy', 'name')
+        .sort({ checkInTime: -1 })
+        .skip((Number(page) - 1) * Number(limit))
+        .limit(Number(limit)),
+      Visitor.countDocuments(filter),
+    ]);
 
     res.json({ success: true, visitors, total });
   } catch (err) {
@@ -109,9 +108,7 @@ exports.getAll = async (req, res) => {
 
 exports.getOne = async (req, res) => {
   try {
-    const visitor = await Visitor.findByPk(req.params.id, {
-      include: [{ model: User, as: 'registeredBy', attributes: ['id', 'name'], required: false }],
-    });
+    const visitor = await Visitor.findById(req.params.id).populate('registeredBy', 'name');
     if (!visitor) return res.status(404).json({ success: false, message: 'Visitor not found' });
     res.json({ success: true, visitor });
   } catch (err) {
@@ -121,7 +118,7 @@ exports.getOne = async (req, res) => {
 
 exports.completeMeeting = async (req, res) => {
   try {
-    const visitor = await Visitor.findByPk(req.params.id);
+    const visitor = await Visitor.findById(req.params.id);
     if (!visitor) return res.status(404).json({ success: false, message: 'Visitor not found' });
     if (visitor.status === 'checked_out') {
       return res.status(400).json({ success: false, message: 'Visitor already checked out' });
@@ -138,7 +135,7 @@ exports.completeMeeting = async (req, res) => {
       title: 'Meeting Complete - Visitor Exiting',
       message: `${visitor.name} (Badge: ${visitor.badgeNumber}, Vehicle: ${visitor.vehicleNumber || 'None'}) has completed the meeting with ${visitor.personToMeet}. Please facilitate exit. ALERT in ${alertMinutes} mins if not out.`,
       type: 'meeting_complete',
-      relatedId: visitor.id,
+      relatedId: visitor._id,
       relatedModel: 'Visitor',
       priority: 'high',
     });
@@ -147,7 +144,7 @@ exports.completeMeeting = async (req, res) => {
       title: 'Visitor Meeting Complete',
       message: `${visitor.name} completed meeting with ${visitor.personToMeet}. Gatekeeper notified. If not out in ${alertMinutes} mins, MISSING alert will trigger.`,
       type: 'gatekeeper_alert',
-      relatedId: visitor.id,
+      relatedId: visitor._id,
       relatedModel: 'Visitor',
     });
 
@@ -159,7 +156,7 @@ exports.completeMeeting = async (req, res) => {
 
 exports.checkout = async (req, res) => {
   try {
-    const visitor = await Visitor.findByPk(req.params.id);
+    const visitor = await Visitor.findById(req.params.id);
     if (!visitor) return res.status(404).json({ success: false, message: 'Visitor not found' });
     if (visitor.status === 'checked_out') {
       return res.status(400).json({ success: false, message: 'Already checked out' });
@@ -174,7 +171,7 @@ exports.checkout = async (req, res) => {
       title: 'Visitor Checked Out',
       message: `${visitor.name} (${visitor.vehicleNumber || 'no vehicle'}) has exited at ${new Date().toLocaleTimeString()}. Duration: ${Math.round((visitor.checkOutTime - visitor.checkInTime) / 60000)} mins.`,
       type: 'general',
-      relatedId: visitor.id,
+      relatedId: visitor._id,
       relatedModel: 'Visitor',
     });
 
@@ -190,21 +187,16 @@ exports.getStats = async (req, res) => {
     today.setHours(0, 0, 0, 0);
 
     const [stats, activeVisitors, missingVisitors] = await Promise.all([
-      Visitor.findAll({
-        where: { checkInTime: { [Op.gte]: today } },
-        attributes: ['status', [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']],
-        group: ['status'],
-      }),
-      Visitor.findAll({
-        where: { status: { [Op.in]: ['checked_in', 'meeting_complete', 'overdue'] } },
-        order: [['checkInTime', 'DESC']],
-        limit: 10,
-      }),
-      Visitor.findAll({
-        where: { status: 'missing' },
-        order: [['missingAlertAt', 'DESC']],
-        limit: 5,
-      }),
+      Visitor.aggregate([
+        { $match: { checkInTime: { $gte: today } } },
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ]),
+      Visitor.find({ status: { $in: ['checked_in', 'meeting_complete', 'overdue'] } })
+        .sort({ checkInTime: -1 })
+        .limit(10),
+      Visitor.find({ status: 'missing' })
+        .sort({ missingAlertAt: -1 })
+        .limit(5),
     ]);
 
     const result = { todayTotal: 0, checkedIn: 0, checkedOut: 0, missing: 0, meetingComplete: 0, overdue: 0 };
@@ -216,9 +208,8 @@ exports.getStats = async (req, res) => {
         meeting_complete: 'meetingComplete',
         overdue: 'overdue',
       };
-      const count = Number(s.get('count'));
-      if (map[s.status]) result[map[s.status]] = count;
-      result.todayTotal += count;
+      if (map[s._id]) result[map[s._id]] = s.count;
+      result.todayTotal += s.count;
     });
 
     res.json({ success: true, stats: result, activeVisitors, missingVisitors });

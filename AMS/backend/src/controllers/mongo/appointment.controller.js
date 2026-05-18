@@ -1,42 +1,30 @@
-const { Op, Sequelize, Appointment, User } = require('../models/sequelize');
-const { createNotification, notifyRole } = require('../services/notification.service');
-
-const publicUserAttrs = [
-  'id', 'name', 'email', 'phone', 'role', 'subject', 'classSection',
-  'childName', 'childClass', 'avatarInitials', 'isActive',
-];
-
-const appointmentIncludes = [
-  { model: User, as: 'parent', attributes: publicUserAttrs },
-  { model: User, as: 'teacher', attributes: publicUserAttrs },
-  { model: User, as: 'notifiedBy', attributes: ['id', 'name'], required: false },
-];
+const Appointment = require('../../models/Appointment');
+const User = require('../../models/User');
+const { createNotification, notifyRole } = require('../../services/notification.service');
 
 exports.create = async (req, res) => {
   try {
     const { teacherId, title, description, appointmentDate, startTime, endTime, reason } = req.body;
 
-    const teacher = await User.findByPk(teacherId);
+    const teacher = await User.findById(teacherId);
     if (!teacher || teacher.role !== 'teacher') {
       return res.status(404).json({ success: false, message: 'Teacher not found' });
     }
 
     const conflict = await Appointment.findOne({
-      where: {
-        teacherId,
-        appointmentDate,
-        status: 'accepted',
-        startTime: { [Op.lt]: endTime },
-        endTime: { [Op.gt]: startTime },
-      },
+      teacher: teacherId,
+      appointmentDate,
+      status: 'accepted',
+      startTime: { $lt: endTime },
+      endTime: { $gt: startTime },
     });
     if (conflict) {
       return res.status(409).json({ success: false, message: 'Teacher already has an accepted appointment in that slot.' });
     }
 
     const appt = await Appointment.create({
-      parentId: req.user.id,
-      teacherId,
+      parent: req.user._id,
+      teacher: teacherId,
       title: title || `Meeting with ${teacher.name}`,
       description,
       appointmentDate,
@@ -50,7 +38,7 @@ exports.create = async (req, res) => {
       title: 'New Appointment Request',
       message: `${req.user.name} (parent of ${req.user.childName || 'student'}) has requested an appointment on ${appointmentDate} at ${startTime}.`,
       type: 'appointment_request',
-      relatedId: appt.id,
+      relatedId: appt._id,
       relatedModel: 'Appointment',
     });
 
@@ -64,25 +52,27 @@ exports.create = async (req, res) => {
 exports.getAll = async (req, res) => {
   try {
     const { status, from, to, page = 1, limit = 20 } = req.query;
-    const where = {};
+    const filter = {};
 
-    if (req.user.role === 'parent') where.parentId = req.user.id;
-    if (req.user.role === 'teacher') where.teacherId = req.user.id;
-    if (status) where.status = status;
+    if (req.user.role === 'parent') filter.parent = req.user._id;
+    if (req.user.role === 'teacher') filter.teacher = req.user._id;
+    if (status) filter.status = status;
     if (from || to) {
-      where.appointmentDate = {};
-      if (from) where.appointmentDate[Op.gte] = from;
-      if (to) where.appointmentDate[Op.lte] = to;
+      filter.appointmentDate = {};
+      if (from) filter.appointmentDate.$gte = from;
+      if (to) filter.appointmentDate.$lte = to;
     }
 
-    const { rows: appointments, count: total } = await Appointment.findAndCountAll({
-      where,
-      include: appointmentIncludes,
-      order: [['appointmentDate', 'DESC'], ['startTime', 'DESC']],
-      offset: (Number(page) - 1) * Number(limit),
-      limit: Number(limit),
-      distinct: true,
-    });
+    const [appointments, total] = await Promise.all([
+      Appointment.find(filter)
+        .populate('parent', 'name email phone childName childClass avatarInitials')
+        .populate('teacher', 'name subject classSection avatarInitials')
+        .populate('notifiedBy', 'name')
+        .sort({ appointmentDate: -1, startTime: -1 })
+        .skip((Number(page) - 1) * Number(limit))
+        .limit(Number(limit)),
+      Appointment.countDocuments(filter),
+    ]);
 
     res.json({ success: true, appointments, total, page: Number(page), limit: Number(limit) });
   } catch (err) {
@@ -92,13 +82,16 @@ exports.getAll = async (req, res) => {
 
 exports.getOne = async (req, res) => {
   try {
-    const appt = await Appointment.findByPk(req.params.id, { include: appointmentIncludes });
+    const appt = await Appointment.findById(req.params.id)
+      .populate('parent', 'name email phone childName childClass avatarInitials')
+      .populate('teacher', 'name subject classSection phone avatarInitials')
+      .populate('notifiedBy', 'name');
     if (!appt) return res.status(404).json({ success: false, message: 'Not found' });
 
     const canAccess =
       ['admin', 'receptionist'].includes(req.user.role) ||
-      appt.parentId === req.user.id ||
-      appt.teacherId === req.user.id;
+      appt.parent._id.equals(req.user._id) ||
+      appt.teacher._id.equals(req.user._id);
 
     if (!canAccess) return res.status(403).json({ success: false, message: 'Access denied' });
     res.json({ success: true, appointment: appt });
@@ -109,7 +102,7 @@ exports.getOne = async (req, res) => {
 
 exports.accept = async (req, res) => {
   try {
-    const appt = await Appointment.findOne({ where: { id: req.params.id, teacherId: req.user.id } });
+    const appt = await Appointment.findOne({ _id: req.params.id, teacher: req.user._id });
     if (!appt) return res.status(404).json({ success: false, message: 'Not found' });
     if (appt.status !== 'pending') {
       return res.status(400).json({ success: false, message: `Cannot accept, status is ${appt.status}` });
@@ -120,11 +113,11 @@ exports.accept = async (req, res) => {
     await appt.save();
 
     await createNotification({
-      userId: appt.parentId,
+      userId: appt.parent,
       title: 'Appointment Accepted',
       message: `${req.user.name} has accepted your appointment on ${appt.appointmentDate} at ${appt.startTime}.${appt.teacherNote ? ' Note: ' + appt.teacherNote : ''}`,
       type: 'appointment_accepted',
-      relatedId: appt.id,
+      relatedId: appt._id,
       relatedModel: 'Appointment',
     });
 
@@ -136,7 +129,7 @@ exports.accept = async (req, res) => {
 
 exports.decline = async (req, res) => {
   try {
-    const appt = await Appointment.findOne({ where: { id: req.params.id, teacherId: req.user.id } });
+    const appt = await Appointment.findOne({ _id: req.params.id, teacher: req.user._id });
     if (!appt) return res.status(404).json({ success: false, message: 'Not found' });
     if (!['pending', 'accepted'].includes(appt.status)) {
       return res.status(400).json({ success: false, message: 'Cannot decline at this stage' });
@@ -147,11 +140,11 @@ exports.decline = async (req, res) => {
     await appt.save();
 
     await createNotification({
-      userId: appt.parentId,
+      userId: appt.parent,
       title: 'Appointment Declined',
       message: `${req.user.name} has declined your appointment on ${appt.appointmentDate}.${appt.declinedReason ? ' Reason: ' + appt.declinedReason : ' Please request a new time.'}`,
       type: 'appointment_declined',
-      relatedId: appt.id,
+      relatedId: appt._id,
       relatedModel: 'Appointment',
     });
 
@@ -163,10 +156,8 @@ exports.decline = async (req, res) => {
 
 exports.complete = async (req, res) => {
   try {
-    const appt = await Appointment.findOne({
-      where: { id: req.params.id, teacherId: req.user.id },
-      include: [{ model: User, as: 'parent', attributes: publicUserAttrs }],
-    });
+    const appt = await Appointment.findOne({ _id: req.params.id, teacher: req.user._id })
+      .populate('parent', 'name childName');
 
     if (!appt) return res.status(404).json({ success: false, message: 'Not found' });
     if (appt.status !== 'accepted') {
@@ -177,15 +168,15 @@ exports.complete = async (req, res) => {
     appt.meetingSummary = req.body.meetingSummary || '';
     appt.receptionistNotified = true;
     appt.receptionistNotifiedAt = new Date();
-    appt.notifiedById = req.user.id;
+    appt.notifiedBy = req.user._id;
     await appt.save();
 
     await createNotification({
-      userId: appt.parentId,
+      userId: appt.parent._id,
       title: 'Meeting Completed',
       message: `Your meeting with ${req.user.name} on ${appt.appointmentDate} is now complete.${appt.meetingSummary ? ' Summary: ' + appt.meetingSummary : ''}`,
       type: 'appointment_completed',
-      relatedId: appt.id,
+      relatedId: appt._id,
       relatedModel: 'Appointment',
     });
 
@@ -193,7 +184,7 @@ exports.complete = async (req, res) => {
       title: 'Meeting Completed - Please Record',
       message: `${req.user.name} has completed the meeting with ${appt.parent.name} (${appt.parent.childName || 'student'}) scheduled for ${appt.appointmentDate} at ${appt.startTime}.${appt.meetingSummary ? ' Summary: ' + appt.meetingSummary : ''}`,
       type: 'receptionist_alert',
-      relatedId: appt.id,
+      relatedId: appt._id,
       relatedModel: 'Appointment',
       priority: 'high',
     });
@@ -206,7 +197,7 @@ exports.complete = async (req, res) => {
 
 exports.cancel = async (req, res) => {
   try {
-    const appt = await Appointment.findOne({ where: { id: req.params.id, parentId: req.user.id } });
+    const appt = await Appointment.findOne({ _id: req.params.id, parent: req.user._id });
     if (!appt) return res.status(404).json({ success: false, message: 'Not found' });
     if (['completed', 'cancelled'].includes(appt.status)) {
       return res.status(400).json({ success: false, message: 'Cannot cancel this appointment' });
@@ -216,11 +207,11 @@ exports.cancel = async (req, res) => {
     await appt.save();
 
     await createNotification({
-      userId: appt.teacherId,
+      userId: appt.teacher,
       title: 'Appointment Cancelled',
       message: `${req.user.name} has cancelled the appointment on ${appt.appointmentDate} at ${appt.startTime}.`,
       type: 'general',
-      relatedId: appt.id,
+      relatedId: appt._id,
       relatedModel: 'Appointment',
     });
 
@@ -232,33 +223,30 @@ exports.cancel = async (req, res) => {
 
 exports.getStats = async (req, res) => {
   try {
-    const where = {};
-    if (req.user.role === 'parent') where.parentId = req.user.id;
-    if (req.user.role === 'teacher') where.teacherId = req.user.id;
+    const matchFilter = {};
+    if (req.user.role === 'parent') matchFilter.parent = req.user._id;
+    if (req.user.role === 'teacher') matchFilter.teacher = req.user._id;
 
-    const stats = await Appointment.findAll({
-      where,
-      attributes: ['status', [Sequelize.fn('COUNT', Sequelize.col('Appointment.id')), 'count']],
-      group: ['status'],
-    });
+    const stats = await Appointment.aggregate([
+      { $match: matchFilter },
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+    ]);
 
     const result = { total: 0, pending: 0, accepted: 0, completed: 0, declined: 0, cancelled: 0 };
     stats.forEach(s => {
-      const count = Number(s.get('count'));
-      result[s.status] = count;
-      result.total += count;
+      result[s._id] = s.count;
+      result.total += s.count;
     });
 
-    const upcoming = await Appointment.findAll({
-      where: {
-        ...where,
-        status: 'accepted',
-        appointmentDate: { [Op.gte]: new Date().toISOString().split('T')[0] },
-      },
-      include: appointmentIncludes,
-      order: [['appointmentDate', 'ASC'], ['startTime', 'ASC']],
-      limit: 5,
-    });
+    const upcoming = await Appointment.find({
+      ...matchFilter,
+      status: 'accepted',
+      appointmentDate: { $gte: new Date().toISOString().split('T')[0] },
+    })
+      .populate('parent', 'name childName avatarInitials')
+      .populate('teacher', 'name subject avatarInitials')
+      .sort({ appointmentDate: 1, startTime: 1 })
+      .limit(5);
 
     res.json({ success: true, stats: result, upcoming });
   } catch (err) {

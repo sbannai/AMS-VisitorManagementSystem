@@ -1,13 +1,11 @@
-const Notification = require('../models/Notification');
+const Notification = require('../../models/Notification');
 
 exports.getAll = async (req, res) => {
   try {
-    const notifications = await Notification.findAll({
-      where: { userId: req.user.id },
-      order: [['createdAt', 'DESC']],
-      limit: 50,
-    });
-    const unread = await Notification.count({ where: { userId: req.user.id, isRead: false } });
+    const notifications = await Notification.find({ userId: req.user._id })
+      .sort({ createdAt: -1 })
+      .limit(50);
+    const unread = await Notification.countDocuments({ userId: req.user._id, isRead: false });
     res.json({ success: true, notifications, unread });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -16,7 +14,7 @@ exports.getAll = async (req, res) => {
 
 exports.markRead = async (req, res) => {
   try {
-    await Notification.update({ isRead: true }, { where: { userId: req.user.id, isRead: false } });
+    await Notification.updateMany({ userId: req.user._id, isRead: false }, { isRead: true });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -25,7 +23,7 @@ exports.markRead = async (req, res) => {
 
 exports.markOneRead = async (req, res) => {
   try {
-    await Notification.update({ isRead: true }, { where: { id: req.params.id, userId: req.user.id } });
+    await Notification.findOneAndUpdate({ _id: req.params.id, userId: req.user._id }, { isRead: true });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
