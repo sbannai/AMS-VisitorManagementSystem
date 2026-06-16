@@ -12,6 +12,8 @@ const notifCtrl = require(`${controllerRoot}/notification.controller`);
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 router.post('/auth/login',   authCtrl.login);
+if (getDatabaseEngine() === 'mysql' && authCtrl.ssoLogin) router.post('/auth/sso-login', authCtrl.ssoLogin);
+if (authCtrl.autoLogin) router.get('/auth/auto-login', authCtrl.autoLogin);
 router.get('/auth/profile',  authenticate, authCtrl.getProfile);
 router.get('/users',         authenticate, authCtrl.getUsers);
 

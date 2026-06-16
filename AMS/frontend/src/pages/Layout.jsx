@@ -173,41 +173,52 @@ export default function Layout() {
             </div>
           )}
 
-          {/* Notification Bell */}
-          <div className="relative">
-            <button onClick={() => { setNotifOpen(o => !o); if (!notifOpen) markRead(); }}
-              className="relative btn-icon">
-              <Bell className="w-4 h-4"/>
-              {unread > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
-                  {unread > 9 ? '9+' : unread}
-                </span>
-              )}
+          {/* Header actions */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                window.location.href = "https://crm.educhoice.tech/cards";
+              }}
+              className="btn-outline btn-sm whitespace-nowrap"
+            >
+              ← Back to Menu
             </button>
 
-            {notifOpen && (
-              <div className="absolute right-0 top-full mt-2 w-96 bg-white rounded-2xl shadow-modal border border-surface-100 z-50 animate-slide-up overflow-hidden">
-                <div className="px-4 py-3 border-b border-surface-100 flex items-center justify-between">
-                  <p className="font-display font-bold text-sm text-surface-900">Notifications</p>
-                  <button onClick={() => setNotifOpen(false)} className="btn-ghost !p-1"><X className="w-3.5 h-3.5"/></button>
-                </div>
-                <div className="max-h-80 overflow-y-auto">
-                  {notifications.length === 0 ? (
-                    <div className="text-center py-8 text-surface-400 text-sm">No notifications</div>
-                  ) : notifications.slice(0, 20).map(n => (
-                    <div key={n._id}
-                      className={`flex items-start gap-3 px-4 py-3 border-b border-surface-50 hover:bg-surface-50 transition-colors ${!n.isRead ? 'bg-brand-50/50' : ''}`}>
-                      <div className={`w-2 h-2 rounded-full flex-shrink-0 mt-1.5 priority-${n.priority}`}/>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-xs font-semibold truncate ${n.type === 'visitor_missing' ? 'text-red-700' : 'text-surface-800'}`}>{n.title}</p>
-                        <p className="text-xs text-surface-500 mt-0.5 line-clamp-2">{n.message}</p>
-                        <p className="text-[10px] text-surface-400 mt-1">{format(new Date(n.createdAt), 'dd MMM, HH:mm')}</p>
+            <div className="relative">
+              <button onClick={() => { setNotifOpen(o => !o); if (!notifOpen) markRead(); }}
+                className="relative btn-icon">
+                <Bell className="w-4 h-4"/>
+                {unread > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                    {unread > 9 ? '9+' : unread}
+                  </span>
+                )}
+              </button>
+
+              {notifOpen && (
+                <div className="absolute right-0 top-full mt-2 w-96 bg-white rounded-2xl shadow-modal border border-surface-100 z-50 animate-slide-up overflow-hidden">
+                  <div className="px-4 py-3 border-b border-surface-100 flex items-center justify-between">
+                    <p className="font-display font-bold text-sm text-surface-900">Notifications</p>
+                    <button onClick={() => setNotifOpen(false)} className="btn-ghost !p-1"><X className="w-3.5 h-3.5"/></button>
+                  </div>
+                  <div className="max-h-80 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <div className="text-center py-8 text-surface-400 text-sm">No notifications</div>
+                    ) : notifications.slice(0, 20).map(n => (
+                      <div key={n._id}
+                        className={`flex items-start gap-3 px-4 py-3 border-b border-surface-50 hover:bg-surface-50 transition-colors ${!n.isRead ? 'bg-brand-50/50' : ''}`}>
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 mt-1.5 priority-${n.priority}`}/>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-xs font-semibold truncate ${n.type === 'visitor_missing' ? 'text-red-700' : 'text-surface-800'}`}>{n.title}</p>
+                          <p className="text-xs text-surface-500 mt-0.5 line-clamp-2">{n.message}</p>
+                          <p className="text-[10px] text-surface-400 mt-1">{format(new Date(n.createdAt), 'dd MMM, HH:mm')}</p>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </header>
 
